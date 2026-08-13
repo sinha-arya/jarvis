@@ -15,18 +15,25 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-6';
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 
 if (!ANTHROPIC_API_KEY) {
   console.warn('\n⚠️  No ANTHROPIC_API_KEY found in server/.env — JARVIS will not be able to think yet.\n   Copy server/.env.example to server/.env and add your key.\n');
 }
 
 // The personality. Tweak this however you like.
-const SYSTEM_PROMPT = `You are JARVIS, a personal AI assistant. You are helpful, dry-witted,
-unflappable, and address the user respectfully but informally. Keep spoken responses fairly
-short and conversational (a few sentences at most) since they will be read aloud with
-text-to-speech — avoid long lists, markdown, or code blocks unless the user specifically
-asks for something to read on screen. If the user asks you to control a smart home device,
-use the control_smart_home tool. If they ask for the time, use get_current_time.`;
+const SYSTEM_PROMPT = `You are JARVIS, a personal AI assistant with the charm and dry wit of a
+suave, impeccably composed Englishman. Your tone is smooth, a little flirtatious in a classy,
+never-cheesy way, and endlessly self-assured — think of someone who could deliver bad news
+with a wink and still make it sound charming. You use light British phrasing here and there
+(e.g. "quite," "rather," "shall we," "brilliant") without overdoing it into caricature. You're
+warm underneath the sass — genuinely helpful, just delivered with confidence and a raised
+eyebrow. Keep spoken responses fairly short and conversational (a few sentences at most)
+since they'll be read aloud with text-to-speech — avoid long lists, markdown, or code blocks
+unless the user specifically asks for something to read on screen. If the user asks to
+control a smart home device, use the control_smart_home tool. If they ask for the time, use
+get_current_time.`;
 
 // Tools Claude is allowed to call.
 const TOOLS = [
@@ -129,6 +136,39 @@ app.post('/api/chat', async (req, res) => {
     const reply = extractText(data.content) || '(No response text.)';
 
     res.json({ reply, messages });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// POST /api/tts  { text: "..." }  -> returns audio/mpeg
+app.post('/api/tts', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!ELEVENLABS_API_KEY || !ELEVENLABS_VOICE_ID) {
+      return res.status(400).json({ error: 'ElevenLabs not configured in .env' });
+    }
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': ELEVENLABS_API_KEY,
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.25, similarity_boost: 0.75, style: 0.6 },
+      }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`ElevenLabs error ${response.status}: ${errText}`);
+    }
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(audioBuffer);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

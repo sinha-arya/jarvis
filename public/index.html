@@ -186,22 +186,32 @@ async function sendToJarvis(userText) {
 }
 
 // ---- Text-to-speech ----
-function speak(text) {
-  if (!('speechSynthesis' in window)) { setStatus('Standing by'); return; }
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = 1.02;
-  utter.pitch = 0.85;
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => /male|daniel|arthur|david/i.test(v.name)) || voices.find(v => v.lang?.startsWith('en'));
-  if (preferred) utter.voice = preferred;
-
-  utter.onstart = () => { core.classList.add('speaking'); setStatus('Speaking'); };
-  utter.onend = () => { core.classList.remove('speaking'); setStatus('Standing by'); };
-  window.speechSynthesis.speak(utter);
+async function speak(text) {
+  core.classList.add('speaking');
+  setStatus('Speaking');
+  try {
+    const resp = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) throw new Error('TTS request failed');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => { core.classList.remove('speaking'); setStatus('Standing by'); URL.revokeObjectURL(url); };
+    audio.onerror = () => { core.classList.remove('speaking'); setStatus('Standing by'); };
+    await audio.play();
+  } catch (err) {
+    console.error('TTS error', err);
+    core.classList.remove('speaking');
+    setStatus('Standing by');
+  }
 }
-// Some browsers load voices async
-window.speechSynthesis?.addEventListener?.('voiceschanged', () => {});
+let cachedVoices = [];
+function loadVoices() { cachedVoices = window.speechSynthesis.getVoices(); }
+loadVoices();
+window.speechSynthesis?.addEventListener?.('voiceschanged', loadVoices);
 
 // ---- Speech-to-text (Web Speech API) ----
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
