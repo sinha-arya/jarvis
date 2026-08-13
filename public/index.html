@@ -100,6 +100,11 @@
     transition: background 0.2s ease, box-shadow 0.2s ease;
   }
   #micBtn.active { background: var(--accent); color: #04141c; box-shadow: 0 0 20px var(--accent-glow); }
+  #wakeBtn {
+    background: var(--panel); border: 1px solid var(--accent-dim); color: var(--text-dim);
+    font-size: 11px; padding: 8px 10px; border-radius: 16px; white-space: nowrap;
+  }
+  #wakeBtn.active { background: var(--accent-dim); color: var(--text); border-color: var(--accent); }
   #sendBtn {
     width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
     background: var(--accent-dim); color: var(--text); font-size: 18px;
@@ -123,6 +128,7 @@
   <div id="status">Standing by</div>
   <div id="log"></div>
   <div id="controls">
+    <button id="wakeBtn" title="Toggle wake word listening">Wake word: OFF</button>
     <button id="micBtn" title="Hold to talk">🎤</button>
     <input id="textInput" type="text" placeholder="Or type to JARVIS…" />
     <button id="sendBtn" title="Send">➤</button>
@@ -285,7 +291,52 @@ function stopListening() {
   micBtn.classList.remove('active');
   core.classList.remove('listening');
   if (statusEl.textContent === 'Listening…') setStatus('Standing by');
+  if (wakeWordEnabled) setTimeout(startWakeListening, 500);
 }
+
+let wakeWordEnabled = false;
+let wakeRecognition = null;
+const WAKE_PHRASES = ['yo jarvis', 'wake up jarvis', 'jarvis darling'];
+
+function startWakeListening() {
+  if (!SpeechRecognition) return;
+  wakeRecognition = new SpeechRecognition();
+  wakeRecognition.continuous = true;
+  wakeRecognition.interimResults = false;
+  wakeRecognition.lang = 'en-US';
+  wakeRecognition.onresult = (e) => {
+    const said = e.results[e.results.length - 1][0].transcript.toLowerCase();
+    if (WAKE_PHRASES.some(phrase => said.includes(phrase))) {
+      wakeRecognition.stop();
+      setStatus('Wake word heard!');
+      startListening();
+    }
+  };
+  wakeRecognition.onerror = () => {};
+  wakeRecognition.onend = () => {
+    if (wakeWordEnabled && !listening) {
+      try { wakeRecognition.start(); } catch (e) {}
+    }
+  };
+  try { wakeRecognition.start(); } catch (e) {}
+}
+
+function stopWakeListening() {
+  if (wakeRecognition) { wakeRecognition.stop(); wakeRecognition = null; }
+}
+
+wakeBtn.addEventListener('click', () => {
+  wakeWordEnabled = !wakeWordEnabled;
+  wakeBtn.classList.toggle('active', wakeWordEnabled);
+  wakeBtn.textContent = wakeWordEnabled ? 'Wake word: ON' : 'Wake word: OFF';
+  if (wakeWordEnabled) {
+    startWakeListening();
+    setStatus('Listening for wake word...');
+  } else {
+    stopWakeListening();
+    setStatus('Standing by');
+  }
+});
 
 micBtn.addEventListener('click', () => {
   if (listening) { recognition.stop(); } else { startListening(); }
