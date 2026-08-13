@@ -169,8 +169,7 @@ function loadHistory() {
 function renderHistory() {
   log.innerHTML = '';
   if (!history.length) {
-    loadHistory();
-renderHistory();
+    addMsg('JARVIS online. Tap the mic and speak, or type a message.', 'system');
     return;
   }
   for (const msg of history) {
