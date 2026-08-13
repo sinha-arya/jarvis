@@ -57,7 +57,40 @@ const TOOLS = [
     description: "Get the current date and time in the user's local timezone.",
     input_schema: { type: 'object', properties: {} },
   },
+  {
+    name: 'get_weather',
+    description: "Get the current weather for a location. Use this whenever the user asks about weather, temperature, or whether they need an umbrella/jacket.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string', description: 'City name, e.g. "Frisco, Texas" or "London"' },
+      },
+      required: ['location'],
+    },
+  },
 ];
+
+async function geocodeLocation(location) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (!data.results || !data.results.length) throw new Error('Location not found');
+  const { latitude, longitude, name, country } = data.results[0];
+  return { latitude, longitude, name, country };
+}
+
+async function getWeather(location) {
+  const { latitude, longitude, name, country } = await geocodeLocation(location);
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  return {
+    location: `${name}, ${country}`,
+    temperature_f: data.current.temperature_2m,
+    wind_mph: data.current.wind_speed_10m,
+    weather_code: data.current.weather_code,
+  };
+}
 
 async function callClaude(messages) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -114,6 +147,8 @@ app.post('/api/chat', async (req, res) => {
               result = await runSmartHomeAction(block.input);
             } else if (block.name === 'get_current_time') {
               result = { time: new Date().toString() };
+            } else if (block.name === 'get_weather') {
+              result = await getWeather(block.input.location);
             } else {
               result = { error: `Unknown tool: ${block.name}` };
             }
